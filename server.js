@@ -16,7 +16,7 @@ const hostelConfigRoutes = require('./routes/hostelConfig');  // NEW
 const app = express();
 
 /* ───────── basics ───────── */
-app.set('trust proxy', 1); // Nginx sits in front of Node
+app.set('trust proxy', 1); // behind Nginx/Passenger
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
@@ -24,9 +24,8 @@ app.use(express.json());
 connectDB();
 
 /* ───────── helpers ─────────
-   We mount every route on both paths so the same build works locally
-   and behind cPanel/Passenger-style prefixes:
-      "/x"  and  "/api/x"
+   Mount every route on both paths so the same build works
+   locally and behind /api prefixes: "/x" and "/api/x".
 ---------------------------------------------------------------- */
 const paths = (p) => [p, `/api${p}`];
 
@@ -52,22 +51,21 @@ app.use(paths('/wardens'),        wardensRoutes);
 app.use(paths('/hostel-config'),  hostelConfigRoutes);
 
 /* ───────── API 404 (JSON) ─────────
-   Anything under /api/* that wasn’t handled above returns JSON 404.
+   Anything under /api/* that wasn’t handled above → JSON 404.
 ---------------------------------------------------------------- */
 app.use('/api', (req, res) => {
   return res.status(404).json({ msg: 'Not found' });
 });
 
 /* ───────── Frontend (SPA) from /public ─────────
-   Serve the compiled React app (CRA build/ copied into backend/public).
-   IMPORTANT: this must be AFTER the API routes and BEFORE any catch-all.
+   Serve compiled React app from backend/public.
+   IMPORTANT: Express 5 cannot use "*" as a path; use a RegExp.
 ---------------------------------------------------------------- */
 const PUBLIC_DIR = path.join(__dirname, 'public');
 app.use(express.static(PUBLIC_DIR));
 
-app.get('*', (req, res, next) => {
-  // Don’t hijack API or uploads paths; let them 404 normally if unmatched.
-  if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+// Matches any GET path NOT starting with /api or /uploads → send index.html
+app.get(/^\/(?!api|uploads).*/, (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
